@@ -35,5 +35,13 @@
     <PackageReference Include="Swashbuckle.AspNetCore"                           Version="6.9.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- External SK prompt template — copy to output and publish directories -->
+    <Content Include="Prompts\sql-generation.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>
 

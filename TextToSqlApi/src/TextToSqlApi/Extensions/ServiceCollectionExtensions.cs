@@ -44,6 +44,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IRequestValidator, TextToSqlRequestValidator>();
         services.AddSingleton<IPromptBuilder, TextToSqlPromptBuilder>();
 
+        // Singleton: prompt template loaded once from Prompts/sql-generation.txt;
+        // Kernel and IHostEnvironment are both singletons, so this is safe.
+        services.AddSingleton<ISqlGenerationService, SqlGenerationService>();
+
         return services;
     }
 
