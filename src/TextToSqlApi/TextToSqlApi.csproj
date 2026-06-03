@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <DocumentationFile>bin\$(Configuration)\$(TargetFramework)\$(AssemblyName).xml</DocumentationFile>
+    <NoWarn>$(NoWarn);1591;SKEXP0010;SKEXP0001</NoWarn>
+    <RootNamespace>TextToSqlApi</RootNamespace>
+    <AssemblyName>TextToSqlApi</AssemblyName>
+    <UserSecretsId>texttosqlapi-secrets</UserSecretsId> 
+  </PropertyGroup>
+
+  <!-- ── AI / Semantic Kernel ─────────────────────────────────────────────── -->
+  <ItemGroup>
+    <PackageReference Include="Azure.AI.OpenAI" Version="2.0.0-beta.5" />
+    <PackageReference Include="Microsoft.SemanticKernel" Version="1.21.1" />
+  </ItemGroup>
+
+  <!-- ── Data access ──────────────────────────────────────────────────────── -->
+  <ItemGroup>
+    <PackageReference Include="Dapper" Version="2.1.35" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
+  </ItemGroup>
+
+  <!-- ── Resilience ───────────────────────────────────────────────────────── -->
+  <ItemGroup>
+    <PackageReference Include="Polly" Version="8.4.2" />
+  </ItemGroup>
+
+  <!-- ── Logging (Serilog) ────────────────────────────────────────────────── -->
+  <ItemGroup>
+    <PackageReference Include="Serilog.AspNetCore" Version="8.0.3" />
+    <PackageReference Include="Serilog.Enrichers.Environment" Version="3.0.0" />
+    <PackageReference Include="Serilog.Enrichers.Thread" Version="4.0.0" />
+    <PackageReference Include="Serilog.Formatting.Compact" Version="2.0.0" />
+    <PackageReference Include="Serilog.Settings.Configuration" Version="8.0.4" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
+    <PackageReference Include="Serilog.Sinks.Debug" Version="2.0.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
+  </ItemGroup>
+
+  <!-- ── API documentation ────────────────────────────────────────────────── -->
+  <ItemGroup>
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.9.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore.Annotations" Version="6.9.0" />
+  </ItemGroup>
+
+  <!-- ── Prompt files (copy to output) ────────────────────────────────────── -->
+  <ItemGroup>
+    <Content Include="Prompts\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

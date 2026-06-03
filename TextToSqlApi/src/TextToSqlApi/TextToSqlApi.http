@@ -1,6 +1,0 @@
-@TextToSqlApi_HostAddress = http://localhost:5005
-
-GET {{TextToSqlApi_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###
