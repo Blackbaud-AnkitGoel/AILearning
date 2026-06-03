@@ -1,11 +1,12 @@
+using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Models;
+using Microsoft.SemanticKernel;
 using System.Reflection;
 using TextToSqlApi.Interfaces;
 using TextToSqlApi.Models;
 using TextToSqlApi.Prompts;
 using TextToSqlApi.Services;
 using TextToSqlApi.Validators;
-using Microsoft.SemanticKernel;
 
 namespace TextToSqlApi.Extensions;
 
@@ -25,14 +26,23 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        // --- Options ---
-        services.Configure<AzureOpenAiSettings>(
-            configuration.GetSection(AzureOpenAiSettings.SectionName));
+        // ── Strongly-typed options with eager DataAnnotations validation ────────
+        // ValidateOnStart() causes the host to fail immediately at startup if any
+        // required value is missing or out of range — no silent misconfiguration.
+        services.AddOptions<GitHubModelsSettings>()
+            .BindConfiguration(GitHubModelsSettings.SectionName)
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
 
-        // --- Core services ---
+        services.AddOptions<ConnectionStringsSettings>()
+            .BindConfiguration(ConnectionStringsSettings.SectionName)
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        // ── Core services ────────────────────────────────────────────────────────
         services.AddScoped<ITextToSqlService, TextToSqlService>();
         services.AddScoped<IRequestValidator, TextToSqlRequestValidator>();
-        services.AddSingleton<IPromptBuilder,  TextToSqlPromptBuilder>();
+        services.AddSingleton<IPromptBuilder, TextToSqlPromptBuilder>();
 
         return services;
     }
@@ -53,82 +63,54 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        var settings = configuration
-            .GetSection(AzureOpenAiSettings.SectionName)
-            .Get<AzureOpenAiSettings>()
-            ?? throw new InvalidOperationException(
-                $"Missing required configuration section '{AzureOpenAiSettings.SectionName}'. " +
-                $"Ensure appsettings.json contains an '{AzureOpenAiSettings.SectionName}' block.");
+        // Kernel is registered as a singleton — it is immutable after Build() and thread-safe.
+        // Settings are resolved from IOptions<GitHubModelsSettings> which has already been
+        // validated (DataAnnotations + ValidateOnStart) before this factory runs.
+        services.AddSingleton<Kernel>(sp =>
+        {
+            var settings = sp.GetRequiredService<IOptions<GitHubModelsSettings>>().Value;
+            var endpoint = new Uri(settings.Endpoint, UriKind.Absolute);
 
-        ValidateSemanticKernelSettings(settings);
+            var kernelBuilder = Kernel.CreateBuilder();
 
-        var endpoint = new Uri(settings.Endpoint, UriKind.Absolute);
-
-        var kernelBuilder = Kernel.CreateBuilder();
-
-        // ── Chat completion ──────────────────────────────────────────────────
-        // Uses the OpenAI-compatible REST surface exposed by GitHub Models.
-        // Swap 'endpoint' for null (or remove the argument) to target openai.com directly.
-        // SKEXP0010: custom-endpoint overload is experimental in SK 1.x but stable in practice.
+            // ── Chat completion ──────────────────────────────────────────────
+            // OpenAI-compatible surface — works with GitHub Models, openai.com, and Azure OpenAI.
+            // SKEXP0010: custom-endpoint overload is experimental in SK 1.x but stable in practice.
 #pragma warning disable SKEXP0010
-        kernelBuilder.AddOpenAIChatCompletion(
-            modelId:  settings.DeploymentName,
-            apiKey:   settings.ApiKey,
-            endpoint: endpoint);
+            kernelBuilder.AddOpenAIChatCompletion(
+                modelId:  settings.DeploymentName,
+                apiKey:   settings.ApiKey,
+                endpoint: endpoint);
 #pragma warning restore SKEXP0010
 
-        // ── Future: text-embedding generation ───────────────────────────────
-        // 1. Set 'EmbeddingModelId' in appsettings.json (e.g. "text-embedding-3-small").
-        // 2. Add the NuGet package Microsoft.SemanticKernel.Connectors.OpenAI if not present.
-        // 3. Uncomment the block below.
+            // ── Future: text-embedding generation ───────────────────────────
+            // 1. Set 'EmbeddingModelId' in appsettings.json (e.g. "text-embedding-3-small").
+            // 2. Uncomment the block below.
+            //
+            // if (!string.IsNullOrWhiteSpace(settings.EmbeddingModelId))
+            // {
+            //     kernelBuilder.AddOpenAITextEmbeddingGeneration(
+            //         modelId:  settings.EmbeddingModelId,
+            //         apiKey:   settings.ApiKey,
+            //         endpoint: endpoint);
+            // }
+
+            return kernelBuilder.Build();
+        });
+
+        // Expose IChatCompletionService directly so consumers receive it via constructor injection.
+        services.AddSingleton(sp =>
+            sp.GetRequiredService<Kernel>()
+              .GetRequiredService<Microsoft.SemanticKernel.ChatCompletion.IChatCompletionService>());
+
+        // ── Future: expose ITextEmbeddingGenerationService ───────────────────
+        // Uncomment when EmbeddingModelId is configured.
         //
-        // if (!string.IsNullOrWhiteSpace(settings.EmbeddingModelId))
-        // {
-        //     kernelBuilder.AddOpenAITextEmbeddingGeneration(
-        //         modelId:  settings.EmbeddingModelId,
-        //         apiKey:   settings.ApiKey,
-        //         endpoint: endpoint);
-        //
-        //     services.AddSingleton(sp =>
-        //         sp.GetRequiredService<Kernel>()
-        //           .GetRequiredService<Microsoft.SemanticKernel.Embeddings.ITextEmbeddingGenerationService>());
-        // }
-
-        var kernel = kernelBuilder.Build();
-
-        // Singleton registrations — Kernel is immutable after Build() and safe for concurrent use.
-        services.AddSingleton(kernel);
-
-        services.AddSingleton(
-            kernel.GetRequiredService<Microsoft.SemanticKernel.ChatCompletion.IChatCompletionService>());
+        // services.AddSingleton(sp =>
+        //     sp.GetRequiredService<Kernel>()
+        //       .GetRequiredService<Microsoft.SemanticKernel.Embeddings.ITextEmbeddingGenerationService>());
 
         return services;
-    }
-
-    /// <summary>
-    /// Validates that all required Semantic Kernel settings are present and well-formed.
-    /// Called once at startup to surface misconfigurations early.
-    /// </summary>
-    private static void ValidateSemanticKernelSettings(AzureOpenAiSettings settings)
-    {
-        var section = AzureOpenAiSettings.SectionName;
-
-        if (string.IsNullOrWhiteSpace(settings.Endpoint))
-            throw new InvalidOperationException(
-                $"'{section}:{nameof(settings.Endpoint)}' is required and must not be empty.");
-
-        if (!Uri.TryCreate(settings.Endpoint, UriKind.Absolute, out _))
-            throw new InvalidOperationException(
-                $"'{section}:{nameof(settings.Endpoint)}' must be a valid absolute URI. " +
-                $"Received: '{settings.Endpoint}'.");
-
-        if (string.IsNullOrWhiteSpace(settings.ApiKey))
-            throw new InvalidOperationException(
-                $"'{section}:{nameof(settings.ApiKey)}' is required and must not be empty.");
-
-        if (string.IsNullOrWhiteSpace(settings.DeploymentName))
-            throw new InvalidOperationException(
-                $"'{section}:{nameof(settings.DeploymentName)}' is required and must not be empty.");
     }
 
     /// <summary>

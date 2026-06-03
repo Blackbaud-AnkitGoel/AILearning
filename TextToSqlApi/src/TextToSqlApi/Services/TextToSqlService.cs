@@ -17,7 +17,7 @@ public sealed class TextToSqlService : ITextToSqlService
 {
     private readonly IPromptBuilder _promptBuilder;
     private readonly IChatCompletionService _chatCompletion;
-    private readonly AzureOpenAiSettings _settings;
+    private readonly GitHubModelsSettings _settings;
     private readonly ILogger<TextToSqlService> _logger;
 
     /// <summary>
@@ -30,7 +30,7 @@ public sealed class TextToSqlService : ITextToSqlService
     public TextToSqlService(
         IPromptBuilder promptBuilder,
         IChatCompletionService chatCompletion,
-        IOptions<AzureOpenAiSettings> settings,
+        IOptions<GitHubModelsSettings> settings,
         ILogger<TextToSqlService> logger)
     {
         _promptBuilder    = promptBuilder    ?? throw new ArgumentNullException(nameof(promptBuilder));
