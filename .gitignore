@@ -1,0 +1,25 @@
+## .NET build output
+bin/
+obj/
+*.user
+
+## Logs
+logs/
+*.log
+
+## Secrets — never commit these
+appsettings.Production.json
+appsettings.Secrets.json
+**/appsettings.*.json
+!appsettings.json
+!appsettings.Development.json
+
+## Rider / VS
+.idea/
+.vs/
+*.suo
+*.ncrunchsolution
+
+## OS
+.DS_Store
+Thumbs.db
