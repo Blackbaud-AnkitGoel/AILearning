@@ -184,6 +184,117 @@ The `SqlValidator` enforces a strict 7-step pipeline before any SQL touches the 
 
 ---
 
+## Switching AI Model Providers
+
+The application uses Semantic Kernel's `IChatCompletionService` abstraction, which makes swapping AI providers straightforward. The provider is configured entirely via `appsettings.json`.
+
+### Config-only change (URL + Key only)
+
+These providers expose an **OpenAI-compatible API** — no code changes needed, just update `Endpoint`, `DeploymentName`, and `ApiKey`:
+
+#### GitHub Models (default — free, rate-limited)
+
+```json
+"OpenAI": {
+  "Endpoint": "https://models.inference.ai.azure.com",
+  "DeploymentName": "gpt-4o",
+  "ApiKey": "<GITHUB_PAT>"
+}
+```
+
+Available `DeploymentName` values on GitHub Models:
+
+| Model | `DeploymentName` | Best for |
+|-------|-----------------|----------|
+| GPT-4o | `gpt-4o` | Best SQL quality (default) |
+| GPT-4o mini | `gpt-4o-mini` | Faster, lower cost |
+| GPT-4.1 | `gpt-4.1` | Latest GPT-4 series |
+| GPT-4.1 mini | `gpt-4.1-mini` | Fast + capable |
+| GPT-4.1 nano | `gpt-4.1-nano` | Fastest, lightweight |
+| o1-mini | `o1-mini` | Complex reasoning |
+| o3-mini | `o3-mini` | Advanced reasoning |
+| Llama 3.3 70B | `meta-llama-3.3-70b-instruct` | Open-source option |
+| Mistral Large | `mistral-large-2411` | European data residency |
+| DeepSeek R1 | `deepseek-r1` | Reasoning tasks |
+| Phi-4 | `Phi-4` | Microsoft small model |
+
+#### Azure OpenAI
+
+```json
+"OpenAI": {
+  "Endpoint": "https://YOUR-RESOURCE.openai.azure.com",
+  "DeploymentName": "your-deployment-name",
+  "ApiKey": "<AZURE_OPENAI_KEY>"
+}
+```
+
+#### Google Gemini
+
+```json
+"OpenAI": {
+  "Endpoint": "https://generativelanguage.googleapis.com/v1beta/openai",
+  "DeploymentName": "gemini-2.0-flash",
+  "ApiKey": "<GOOGLE_API_KEY>"
+}
+```
+
+#### Groq (very fast inference)
+
+```json
+"OpenAI": {
+  "Endpoint": "https://api.groq.com/openai/v1",
+  "DeploymentName": "llama-3.3-70b-versatile",
+  "ApiKey": "<GROQ_API_KEY>"
+}
+```
+
+#### Mistral AI
+
+```json
+"OpenAI": {
+  "Endpoint": "https://api.mistral.ai/v1",
+  "DeploymentName": "mistral-large-latest",
+  "ApiKey": "<MISTRAL_API_KEY>"
+}
+```
+
+#### Ollama (local — fully private, no internet required)
+
+```json
+"OpenAI": {
+  "Endpoint": "http://localhost:11434/v1",
+  "DeploymentName": "llama3.3",
+  "ApiKey": "ollama"
+}
+```
+
+#### Together AI / Fireworks AI
+
+```json
+"OpenAI": {
+  "Endpoint": "https://api.together.xyz/v1",
+  "DeploymentName": "meta-llama/Llama-3-70b-chat-hf",
+  "ApiKey": "<TOGETHER_API_KEY>"
+}
+```
+
+---
+
+### One-line code change required
+
+These providers use a **proprietary API format** — not OpenAI-compatible. They require replacing one line in [`ServiceCollectionExtensions.cs`](src/TextToSqlApi/Extensions/ServiceCollectionExtensions.cs) and installing the relevant Semantic Kernel connector NuGet package:
+
+| Provider | NuGet Package | Code change |
+|----------|--------------|-------------|
+| **AWS Bedrock** (Claude, Titan, Llama) | `Microsoft.SemanticKernel.Connectors.Amazon` | `kernelBuilder.AddBedrockChatCompletion(modelId, amazonBedrockClient)` |
+| **Anthropic Claude** (direct) | `Microsoft.SemanticKernel.Connectors.Anthropic` | `kernelBuilder.AddAnthropicChatCompletion(modelId, apiKey)` |
+| **Google Vertex AI** | `Microsoft.SemanticKernel.Connectors.Google` | `kernelBuilder.AddVertexAIChatCompletion(modelId, ...)` |
+| **Cohere** | `Microsoft.SemanticKernel.Connectors.Cohere` | `kernelBuilder.AddCohereChatCompletion(modelId, apiKey)` |
+
+All other application code (`TextToSqlService`, `ResultSummaryService`, controllers, etc.) remains completely unchanged because they only depend on `IChatCompletionService`.
+
+---
+
 ## Configuration Reference
 
 ### `appsettings.json` Sections
