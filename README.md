@@ -1,6 +1,187 @@
-# Text-to-SQL AI API
+# TextToSql.Api
 
 An enterprise-grade ASP.NET Core 9 Web API that translates natural-language questions into safe SQL queries using **GitHub Models (GPT-4o via Semantic Kernel)**, executes them against SQL Server, and returns both the raw data and a business-friendly AI-generated summary.
+
+> Part of the **AI Experiments** solution — consumed as a downstream tool by `EnterpriseAgent.Api`.
+
+---
+
+## Architecture
+
+```
+HTTP Request
+     │
+     ▼
+GlobalExceptionMiddleware  (ProblemDetails RFC 7807)
+     │
+     ▼
+QueryController  →  POST /api/query
+     │
+     ▼
+4-Step Query Pipeline
+  1. ITextToSqlService        ← Semantic Kernel + GitHub Models (GPT-4o)
+     (via ResilientDecorator) ← Polly retry + timeout
+  2. ISqlValidator            ← 7-step safety validation
+  3. ISqlExecutionService     ← Dapper + SQL Server
+  4. IResultSummaryService    ← Semantic Kernel summarisation
+     │
+     ▼
+JSON Response
+```
+
+### Key Services
+
+| Service | Responsibility |
+|---------|----------------|
+| `TextToSqlService` | Prompts GPT-4o to generate SQL from natural language |
+| `ResilientTextToSqlService` | Polly decorator — exponential backoff retry + total timeout |
+| `SqlValidator` | 7-step enterprise SQL safety validation (SELECT-only, TOP injection) |
+| `SqlExecutionService` | Executes validated SQL via Dapper |
+| `DatabaseSchemaService` | Reads live schema from `INFORMATION_SCHEMA`, cached 30 min |
+| `ResultSummaryService` | Summarises results in business-friendly English |
+
+---
+
+## Tech Stack
+
+| Concern | Technology |
+|---------|-----------|
+| Framework | ASP.NET Core 9 Web API |
+| AI / LLM | Semantic Kernel + GitHub Models (GPT-4o) |
+| Data Access | Dapper + Microsoft.Data.SqlClient |
+| Resilience | Polly — exponential backoff, total timeout |
+| Logging | Serilog — structured JSON, daily rolling files |
+| Documentation | Swashbuckle / Swagger UI with XML comments |
+
+---
+
+## Prerequisites
+
+- [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
+- SQL Server (local or remote) with a queryable database
+- [GitHub Personal Access Token](https://github.com/settings/tokens) with `models:read` permission
+
+---
+
+## Local Setup
+
+### 1. Navigate to the project
+
+```bash
+cd TextToSqlApi/src/TextToSqlApi
+```
+
+### 2. Save secrets with .NET User Secrets (recommended)
+
+The project uses `UserSecretsId: texttosqlapi-secrets`. Run these once — secrets are stored securely outside the repository:
+
+```bash
+dotnet user-secrets set "GitHubModels:Token" "github_pat_YOUR_TOKEN_HERE"
+dotnet user-secrets set "OpenAI:ApiKey" "github_pat_YOUR_TOKEN_HERE"
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Server=YOUR_SERVER;Database=YOUR_DB;Trusted_Connection=True;TrustServerCertificate=True;"
+```
+
+> **Why two keys?** The project maps the GitHub PAT to both `OpenAI:ApiKey` (used by the Semantic Kernel OpenAI connector) and `GitHubModels:Token` for flexibility.
+
+### 3. Review appsettings.json
+
+Non-secret settings are in `appsettings.json` — no changes needed for local dev:
+
+```json
+{
+  "OpenAI": {
+    "Endpoint": "https://models.inference.ai.azure.com",
+    "DeploymentName": "gpt-4o"
+  },
+  "SqlExecution": {
+    "CommandTimeoutSeconds": 30,
+    "MaxRows": 1000
+  },
+  "Resilience": {
+    "MaxRetryAttempts": 3,
+    "BaseDelaySeconds": 2,
+    "TotalTimeoutSeconds": 60
+  }
+}
+```
+
+### 4. Run
+
+```bash
+dotnet run
+```
+
+Swagger UI: `https://localhost:7001/swagger/index.html`
+
+---
+
+## API Endpoints
+
+### `POST /api/query`
+
+End-to-end: natural language → SQL → execute → summarise.
+
+**Request:**
+```json
+{
+  "question": "Show me the top 5 customers by total order value",
+  "sqlDialect": "T-SQL",
+  "maxRows": 100
+}
+```
+
+**Response:**
+```json
+{
+  "question": "Show me the top 5 customers by total order value",
+  "sqlQuery": "SELECT TOP 5 CustomerName, SUM(TotalAmount) AS Total FROM Orders GROUP BY CustomerName ORDER BY Total DESC",
+  "summary": "The top 5 customers are led by Acme Corp with £450,000...",
+  "data": [...],
+  "rowCount": 5
+}
+```
+
+### `POST /api/texttosql/translate`
+
+SQL generation only — no execution or summarisation.
+
+### `GET /api/texttosql/health`
+
+Lightweight liveness check.
+
+---
+
+## SQL Safety Validation
+
+The `SqlValidator` runs 7 steps before any SQL touches the database:
+
+1. Null/empty guard
+2. Length check (max 8,000 chars)
+3. Comment stripping (`--`, `/* */`)
+4. Semicolon rejection (blocks multi-statement)
+5. Forbidden keyword check (DELETE, UPDATE, INSERT, DROP, ALTER, EXEC, MERGE, TRUNCATE)
+6. System access block (`xp_*`, `sp_*`, `USE`)
+7. SELECT-only allowlist
+8. TOP injection — adds `SELECT TOP 100` if no row limiter present
+
+---
+
+## Ports
+
+| Profile | URL |
+|---------|-----|
+| HTTPS | `https://localhost:7001` |
+| HTTP | `http://localhost:5001` |
+
+---
+
+## Security Notes
+
+- Never commit API keys — always use User Secrets or environment variables
+- SQL injection mitigated by SELECT-only validation; no user input interpolated into SQL
+- Swagger is configurable via `Swagger:AlwaysEnable` — disable in production if not needed
+- Row limiting enforced at both generation (`TOP` injection) and execution (`MaxRows`) layers
+
 
 ---
 
